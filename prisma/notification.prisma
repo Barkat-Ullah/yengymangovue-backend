@@ -1,0 +1,35 @@
+model Notification {
+    id               String                  @id @default(auto()) @map("_id") @db.ObjectId
+    title            String
+    message          String
+    redirectEndpoint String?
+    type             NotificationType
+    users            NotificationUser[]
+    createdAt        DateTime                @default(now())
+    updatedAt        DateTime                @updatedAt
+
+    @@map("notification")
+}
+
+model NotificationUser {
+    id             String        @id @default(auto()) @map("_id") @db.ObjectId
+    isRead         Boolean       @default(false)
+    receivedAt     DateTime      @default(now())
+    notification   Notification? @relation(fields: [notificationId], references: [id])
+    user           User          @relation(fields: [userId], references: [id])
+    notificationId String        @db.ObjectId
+    userId         String        @db.ObjectId
+    createdAt      DateTime      @default(now())
+    updatedAt      DateTime      @updatedAt
+
+    @@map("notificationUser")
+}
+
+enum NotificationType {
+    MESSAGE
+    SCHEDULE_ENTRY
+    RESCHEDULE
+    CONNECTION_REQUEST
+    CONNECTION_APPROVAL
+    BUSINESS_CARD_REQUEST
+}

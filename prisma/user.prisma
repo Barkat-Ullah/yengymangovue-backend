@@ -1,0 +1,52 @@
+model User {
+  id       String       @id @default(auto()) @map("_id") @db.ObjectId
+  fullName String
+  email    String       @unique
+  password String
+  profile  String?
+  role     UserRoleEnum @default(USER)
+  status   UserStatus   @default(ACTIVE)
+
+  otp         String?
+  otpExpiry   DateTime?
+  invite_code String?   @unique
+  isConnected Boolean   @default(false)
+
+  isEmailVerified Boolean @default(false)
+  isDeleted       Boolean @default(false)
+
+  stripeCustomerId String?
+
+  coupleId String? @unique @db.ObjectId
+  couple   Couple? @relation(fields: [coupleId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  payments      Payment[]
+  notifications NotificationUser[]
+  billboards Billboard[] @relation("BillboardCreatedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Couple {
+  id         String      @id @default(auto()) @map("_id") @db.ObjectId
+  users      User[]
+  billboards Billboard[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("couples")
+}
+
+enum UserRoleEnum {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
