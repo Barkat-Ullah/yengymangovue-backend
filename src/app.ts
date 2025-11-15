@@ -3,6 +3,7 @@ import globalErrorHandler from './app/middlewares/globalErrorHandler';
 import router from './app/routes';
 import auth from './app/middlewares/auth';
 import { upload } from './app/utils/fileUploader';
+import { StripeWebHook } from './app/utils/StripeUtils';
 import {
   apiLimiter,
   imageUpload,
@@ -11,20 +12,20 @@ import {
   setupMiddlewares,
 } from './shared';
 
-// import { StripeWebHook } from './app/utils/StripeUtils';
 
 const app: Application = express();
+app.post(
+  '/api/v1/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  StripeWebHook,
+);
 
 setupMiddlewares(app);
 
 app.use('/api/v1', apiLimiter, router);
 
 // Stripe webhook (if needed, before error handler)
-app.post(
-  '/api/v1/stripe/webhook',
-  express.raw({ type: 'application/json' }),
-  // StripeWebHook,
-);
+
 
 // Upload route (after main routes, before error handler)
 app.post(

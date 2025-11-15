@@ -4,8 +4,6 @@ import sendResponse from '../../utils/sendResponse';
 import { PageContentServices } from './Security.service';
 import httpStatus from 'http-status';
 
-
-
  const createPageContent = catchAsync(
   async (req: Request, res: Response) => {
     const { type, title } = req.body;

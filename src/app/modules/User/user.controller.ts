@@ -2,7 +2,6 @@ import httpStatus from 'http-status';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import { UserServices } from './user.service';
-import { Request } from 'express';
 
 const getAllUsers = catchAsync(async (req, res) => {
   const result = await UserServices.getAllUsersFromDB(req.query);
@@ -10,7 +9,8 @@ const getAllUsers = catchAsync(async (req, res) => {
   sendResponse(res, {
     statusCode: httpStatus.OK,
     message: 'Users retrieved successfully',
-    ...result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 
@@ -36,8 +36,6 @@ const getUserDetails = catchAsync(async (req, res) => {
   });
 });
 
-
-
 const updateUserRoleStatus = catchAsync(async (req, res) => {
   const { id } = req.params;
   const role = req.body.role;
@@ -52,12 +50,11 @@ const updateUserRoleStatus = catchAsync(async (req, res) => {
 
 const updateUserStatus = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const status = req.body.status;
-  const result = await UserServices.updateUserStatus(id, status);
+  const result = await UserServices.updateUserStatus(id);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
-    message: 'User status updated successfully',
+    message: result.message,
     data: result,
   });
 });
@@ -118,7 +115,6 @@ const updateMyProfile = catchAsync(async (req, res) => {
     data: result,
   });
 });
-
 
 export const UserControllers = {
   getAllUsers,

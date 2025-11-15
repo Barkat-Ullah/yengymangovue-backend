@@ -12,58 +12,142 @@ interface UserWithOptionalPassword extends Omit<User, 'password'> {
   password?: string;
 }
 
-const getAllUsersFromDB = async (query: any) => {
-  const usersQuery = new QueryBuilder<typeof prisma.user>(prisma.user, query);
-  usersQuery.where({ role: 'USER' });
-
-  const result = await usersQuery
-    .search(['fullName', 'email', 'address', 'city'])
-    .filter()
-    .sort()
-    .customFields({
-      id: true,
-      fullName: true,
-      email: true,
-      profile: true,
-      role: true,
-      status: true,
-      invite_code: true,
-      isConnected: true,
-      isDeleted: true,
-      stripeCustomerId: true,
-      coupleId: true,
-      couple: {
-        select: {
-          users: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-              profile: true,
-            },
-          },
-        },
+const getAllUsersFromDB = async (query: Record<string, any>) => {
+  const couples = await prisma.couple.findMany({
+    where: {
+      users: {
+        every: { role: 'USER', isDeleted: false },
       },
-    })
-    .fields()
-    .exclude()
-    .paginate()
-    .execute();
-
-  const filteredData = result.data.map((user: any) => {
-    const partner = user.couple?.users?.find((u: any) => u.id !== user.id);
-    return {
-      ...user,
-      couple: partner || null,
-    };
+    },
+    include: {
+      users: {
+        select: {
+          id: true,
+          fullName: true,
+          nickName: true,
+          email: true,
+          profile: true,
+          status: true,
+          coupleId: true,
+        },
+        where: { isDeleted: false },
+        orderBy: { fullName: 'asc' },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
   });
 
+  // Build table data
+  const tableData = couples
+    .filter(couple => couple.users.length === 2)
+    .map(couple => {
+      const [partner1, partner2] = couple.users;
+
+      const combinedStatus =
+        partner1.status === 'ACTIVE' && partner2.status === 'ACTIVE'
+          ? 'ACTIVE'
+          : partner1.status === 'SUSPENDED' && partner2.status === 'SUSPENDED'
+            ? 'SUSPENDED'
+            : 'MIXED';
+
+      return {
+        id: couple.id,
+        partner1: {
+          id: partner1.id,
+          name: partner1.fullName,
+          email: partner1.email,
+          profile: partner1.profile,
+        },
+        partner2: {
+          id: partner2.id,
+          name: partner2.fullName,
+          email: partner2.email,
+          profile: partner2.profile,
+        },
+        status: combinedStatus,
+        actions: couple.id,
+      };
+    });
+
+  // Extract filters
+  const { page = 1, limit = 10, searchTerm, status } = query;
+
+  let filteredData = [...tableData];
+
+  // 🔍 Search filter
+  if (searchTerm) {
+    const term = searchTerm.toLowerCase();
+    filteredData = filteredData.filter(
+      couple =>
+        couple.partner1.name.toLowerCase().includes(term) ||
+        couple.partner1.email.toLowerCase().includes(term) ||
+        couple.partner2.name.toLowerCase().includes(term) ||
+        couple.partner2.email.toLowerCase().includes(term),
+    );
+  }
+
+  // 🟢 Status filter
+  if (status) {
+    filteredData = filteredData.filter(couple => couple.status === status);
+  }
+
+  // Pagination
+  const skip = (Number(page) - 1) * Number(limit);
+  const paginatedData = filteredData.slice(skip, skip + Number(limit));
+  const total = filteredData.length;
+  const totalPage = Math.ceil(total / Number(limit));
+
   return {
-    ...result,
-    data: filteredData,
+    message: 'Users retrieved successfully',
+    meta: {
+      page: Number(page),
+      limit: Number(limit),
+      total,
+      totalPage,
+    },
+    data: paginatedData,
   };
 };
 
+
+const updateUserStatus = async (id: string) => {
+  return await prisma.$transaction(async tx => {
+    const user = await tx.user.findUnique({
+      where: { id },
+      include: { couple: true },
+    });
+
+    if (!user || !user.couple) {
+      throw new AppError(httpStatus.NOT_FOUND, 'User or couple not found');
+    }
+
+    const currentStatus = user.status;
+    const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+
+    await tx.user.updateMany({
+      where: { coupleId: user.coupleId },
+      data: { status: newStatus },
+    });
+
+    const updatedCouple = await tx.couple.findUnique({
+      where: { id: user.coupleId as string },
+      include: {
+        users: {
+          select: {
+            id: true,
+            fullName: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    return {
+      message: `Status toggled to ${newStatus} for couple`,
+      data: updatedCouple,
+    };
+  });
+};
 const getMyProfileFromDB = async (id: string) => {
   const Profile = await prisma.user.findUnique({
     where: {
@@ -72,6 +156,7 @@ const getMyProfileFromDB = async (id: string) => {
     select: {
       id: true,
       fullName: true,
+      nickName: true,
       email: true,
       role: true,
       status: true,
@@ -96,31 +181,22 @@ const getMyProfileFromDB = async (id: string) => {
 };
 
 const getUserDetailsFromDB = async (id: string) => {
-  const user = await prisma.user.findUnique({
+  const user = await prisma.couple.findUnique({
     where: { id },
     select: {
-      id: true,
-      fullName: true,
-      email: true,
-      role: true,
-      status: true,
-      profile: true,
-      coupleId: true,
-      couple: {
+      users: {
         select: {
-          users: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-              profile: true,
-            },
-          },
+          id: true,
+          fullName: true,
+          email: true,
+          profile: true,
+          subscriptionStart: true,
+          subscriptionEnd: true,
         },
       },
     },
   });
-  return getPartnerFromUser(user);
+  return user;
 };
 
 const updateUserRoleStatusIntoDB = async (id: string, role: UserRoleEnum) => {
@@ -210,7 +286,7 @@ const updateUserIntoDb = async (req: Request, id: string) => {
   }
 
   // Step 2️⃣: Parse incoming data
-  const { fullName, describe, city, address } = JSON.parse(req.body.data);
+  const { fullName } = JSON.parse(req.body.data);
 
   // Step 3️⃣: Handle file upload (optional)
   const file = req.file as Express.Multer.File | undefined;
@@ -236,6 +312,7 @@ const updateUserIntoDb = async (req: Request, id: string) => {
       profile: true,
       role: true,
       status: true,
+      nickName: true,
     },
   });
 
@@ -246,22 +323,6 @@ const updateUserIntoDb = async (req: Request, id: string) => {
     );
   }
 
-  return result;
-};
-const updateUserStatus = async (id: string, status: UserStatus) => {
-  const result = await prisma.user.update({
-    where: {
-      id,
-    },
-    data: {
-      status,
-    },
-    select: {
-      id: true,
-      status: true,
-      role: true,
-    },
-  });
   return result;
 };
 
@@ -282,31 +343,70 @@ const updateMyProfileIntoDB = async (
   file: Express.Multer.File | undefined,
   payload: Partial<User>,
 ) => {
-  // Prevent updating sensitive fields
-  const { email, role, ...updateData } = payload;
+  return await prisma.$transaction(async tx => {
+    const currentUser = await tx.user.findUnique({
+      where: { id },
+      include: {
+        couple: {
+          include: {
+            users: {
+              select: {
+                id: true,
+                fullName: true,
+                nickName: true,
+                email: true,
+              },
+              where: { id: { not: id } },
+            },
+          },
+        },
+      },
+    });
 
-  let profileUrl: string | null = null;
-  if (file) {
-    const location = await uploadToDigitalOceanAWS(file);
-    profileUrl = location.Location;
-    updateData.profile = profileUrl;
-  }
+    if (!currentUser) {
+      throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+    }
 
-  // Always update (with or without file)
-  const result = await prisma.user.update({
-    where: { id },
-    data: updateData,
-    select: {
-      id: true,
-      fullName: true,
-      email: true,
-      profile: true,
-      role: true,
-      status: true,
-    },
+    if (!currentUser.couple || currentUser.couple.users.length === 0) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'No partner found. Connect first.',
+      );
+    }
+
+    const partner = currentUser.couple.users[0];
+
+    const { nickName, email, role, ...ownUpdateData } = payload;
+
+    let profileUrl: string | null = null;
+    if (file) {
+      const location = await uploadToDigitalOceanAWS(file);
+      profileUrl = location.Location;
+      ownUpdateData.profile = profileUrl;
+    }
+
+    const updatedCurrentUser = await tx.user.update({
+      where: { id },
+      data: ownUpdateData,
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        profile: true,
+        role: true,
+        status: true,
+      },
+    });
+
+    if (nickName) {
+      await tx.user.update({
+        where: { id: partner.id },
+        data: { nickName: nickName as string },
+      });
+    }
+
+    return updatedCurrentUser;
   });
-
-  return result;
 };
 
 export const UserServices = {

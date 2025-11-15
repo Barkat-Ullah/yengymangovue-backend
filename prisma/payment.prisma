@@ -2,7 +2,7 @@ model Payment {
     id String @id @default(auto()) @map("_id") @db.ObjectId
 
     userId         String @db.ObjectId
-    // subscriptionId String @db.ObjectId
+    subscriptionId String @db.ObjectId
 
     amount   Float
     currency Currency      @default(usd)
@@ -16,7 +16,7 @@ model Payment {
 
     stripeSessionId      String? @unique
     stripePaymentId      String? @unique
-    // stripeSubscriptionId String? @unique
+    stripeSubscriptionId String? @unique
     stripeCustomerId     String?
 
     user         User         @relation(fields: [userId], references: [id])

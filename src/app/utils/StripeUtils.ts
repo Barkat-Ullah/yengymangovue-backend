@@ -1,229 +1,460 @@
-// import httpStatus from 'http-status';
-// import AppError from '../errors/AppError';
-// import catchAsync from './catchAsync';
-// import sendResponse from './sendResponse';
-// import Stripe from 'stripe';
-// import config from '../../config';
-// import { prisma } from './prisma';
-// import { stripe } from './stripe';
-// import { PaymentStatus, SubscriptionType } from '@prisma/client';
+import { Request, Response } from 'express';
+import { PaymentStatus } from '@prisma/client';
+import Stripe from 'stripe';
+import { stripe } from './stripe';
+import { prisma } from './prisma';
+import catchAsync from './catchAsync';
+import httpStatus from 'http-status';
+import AppError from '../errors/AppError';
+import sendResponse from './sendResponse';
+import config from '../../config';
 
-// export const StripeWebHook = catchAsync(async (req, res) => {
-//   const sig = req.headers['stripe-signature'];
-//   if (!sig) {
-//     throw new AppError(httpStatus.NOT_FOUND, 'Missing Stripe signature');
-//   }
+export const StripeWebHook = catchAsync(async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  if (!sig) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Missing Stripe signature');
+  }
 
-//   const result = await StripeHook(req.body, sig);
-//   sendResponse(res, {
-//     statusCode: httpStatus.OK,
-//     message: 'Webhook processed successfully',
-//     data: result,
-//   });
-// });
+  const result = await StripeHook(req.body, sig);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    message: 'Webhook processed successfully',
+    data: result,
+  });
+});
 
-// const StripeHook = async (
-//   rawBody: Buffer,
-//   signature: string | string[] | undefined,
-// ) => {
-//   let event: Stripe.Event;
+export const StripeHook = async (
+  rawBody: Buffer,
+  signature: string | string[] | undefined,
+) => {
+  let event: Stripe.Event;
 
-//   try {
-//     event = stripe.webhooks.constructEvent(
-//       rawBody,
-//       signature as string,
-//       config.stripe.stripe_webhook as string,
-//     );
-//   } catch (err) {
-//     throw new AppError(
-//       httpStatus.BAD_REQUEST,
-//       `Webhook signature verification failed: ${(err as Error).message}`,
-//     );
-//   }
+  try {
+    event = stripe.webhooks.constructEvent(
+      rawBody,
+      signature as string,
+      config.stripe.stripe_webhook as string,
+    );
+  } catch (err) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      `Webhook signature verification failed: ${(err as Error).message}`,
+    );
+  }
 
-//   switch (event.type) {
-//     case 'payment_intent.succeeded': {
-//       const paymentIntent = event.data.object as Stripe.PaymentIntent;
+  try {
+    switch (event.type) {
+      // Payment succeeded - update payment status to SUCCESS
+      case 'payment_intent.succeeded':
+        await handlePaymentIntentSucceeded(
+          event.data.object as Stripe.PaymentIntent,
+        );
+        break;
 
-//       // Try to find a payment record first
-//       const existingPayment = await prisma.payment.findUnique({
-//         where: { stripePaymentId: paymentIntent.id },
-//         select: { userId: true, subscriptionId: true },
-//       });
+      // Payment failed - update payment status to FAILED
+      case 'payment_intent.payment_failed':
+        await handlePaymentIntentFailed(
+          event.data.object as Stripe.PaymentIntent,
+        );
+        break;
 
-//       if (existingPayment) {
-//         await prisma.payment.update({
-//           where: { stripePaymentId: paymentIntent.id },
-//           data: {
-//             status: PaymentStatus.SUCCESS,
-//             amount: paymentIntent.amount,
-//             stripeCustomerId: paymentIntent.customer as string,
-//           },
-//         });
-//       } else {
-//         console.log(
-//           `No payment record found for PaymentIntent ${paymentIntent.id}`,
-//         );
-//       }
-//       break;
-//     }
+      // Invoice payment succeeded (for subscription renewals)
+      case 'invoice.payment_succeeded':
+        await handleInvoicePaymentSucceeded(
+          event.data.object as Stripe.Invoice,
+        );
+        break;
 
-//     case 'invoice.payment_succeeded': {
-//       const invoice = event.data.object as Stripe.Invoice;
-//       const stripeSubscriptionId = invoice.subscription as string | null;
-//       const stripeCustomerId = invoice.customer as string | null;
+      // Invoice payment failed
+      case 'invoice.payment_failed':
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        break;
 
-//       if (!stripeSubscriptionId) {
-//         console.log('Invoice has no subscription ID, skipping.');
-//         break;
-//       }
+      // Subscription deleted/cancelled
+      case 'customer.subscription.deleted':
+        await handleSubscriptionDeleted(
+          event.data.object as Stripe.Subscription,
+        );
+        break;
 
-//       // 1. Find the local Payment record using the saved Stripe Subscription ID
-//       const existingPayment = await prisma.payment.findUnique({
-//         where: { stripeSubscriptionId: stripeSubscriptionId },
-//         select: { id: true, userId: true, subscriptionId: true },
-//       });
+      // Subscription updated
+      case 'customer.subscription.updated':
+        await handleSubscriptionUpdated(
+          event.data.object as Stripe.Subscription,
+        );
+        break;
 
-//       // **CRITICAL: The logic goes HERE**
-//       if (existingPayment) {
-//         // 2. Fetch the actual subscription details for duration
-//         const subscription = await prisma.subscription.findUnique({
-//           where: { id: existingPayment.subscriptionId },
-//         });
+      // Checkout session completed (if using Checkout)
+      case 'checkout.session.completed':
+        await handleCheckoutSessionCompleted(
+          event.data.object as Stripe.Checkout.Session,
+        );
+        break;
 
-//         if (subscription) {
-//           // 3. Update User's subscription dates (This assumes the payment confirms the active subscription)
-//           const startDate = new Date();
-//           const endDate = new Date();
+      // Checkout session expired
+      case 'checkout.session.expired':
+        await handleCheckoutSessionExpired(
+          event.data.object as Stripe.Checkout.Session,
+        );
+        break;
 
-//           if (subscription.subscriptionType === SubscriptionType.MONTHLY) {
-//             endDate.setMonth(endDate.getMonth() + subscription.duration);
-//           } else if (
-//             subscription.subscriptionType === SubscriptionType.YEARLY
-//           ) {
-//             endDate.setFullYear(endDate.getFullYear() + subscription.duration);
-//           }
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
+    }
 
-//           await prisma.user.update({
-//             where: { id: existingPayment.userId },
-//             data: {
-//               subscriptionStart: startDate,
-//               subscriptionEnd: endDate,
-//               // Optionally: store Stripe Customer ID on User if needed
-//               stripeCustomerId: stripeCustomerId,
-//             },
-//           });
+    // res.json({ received: true });
+  } catch (error: any) {
+    console.error('Error processing webhook:', error);
+    // res.status(500).send(`Webhook Error: ${error.message}`);
+  }
+};
 
-//           // 4. Update the Payment record status (Now existingPayment.id is available)
-//           await prisma.payment.update({
-//             where: { id: existingPayment.id }, // No more error here!
-//             data: {
-//               status: PaymentStatus.SUCCESS,
-//               amount: invoice.amount_paid / 100,
-//               stripeCustomerId: stripeCustomerId,
-//               stripePaymentId: invoice.payment_intent as string,
-//             },
-//           });
-//         }
-//       } else {
-//         console.log(
-//           `No payment record found for Stripe Subscription ID ${stripeSubscriptionId}. This could be a renewal/recurring invoice.`,
-//         );
-//       }
-//       break;
-//     }
-//     case 'payment_intent.payment_failed': {
-//       const paymentIntent = event.data.object as Stripe.PaymentIntent;
-//       const sessionId = paymentIntent.metadata?.paymentId;
+// Handle successful payment intent
+async function handlePaymentIntentSucceeded(
+  paymentIntent: Stripe.PaymentIntent,
+) {
+  console.log('Payment succeeded:', paymentIntent.id);
 
-//       if (sessionId) {
-//         await prisma.payment.update({
-//           where: { id: sessionId },
-//           data: { status: PaymentStatus.FAILED },
-//         });
-//       } else {
-//         console.log('Payment failed but no session/paymentId found.');
-//       }
-//       break;
-//     }
+  const payment = await prisma.payment.findFirst({
+    where: { stripePaymentId: paymentIntent.id },
+    include: {
+      user: {
+        include: {
+          couple: true,
+        },
+      },
+    },
+  });
 
-//     case 'checkout.session.completed': {
-//       const session = event.data.object as Stripe.Checkout.Session;
-//       await handleCheckoutSessionCompleted(session);
-//       break;
-//     }
+  if (payment) {
+    // Update payment status to SUCCESS
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: PaymentStatus.SUCCESS },
+    });
 
-//     case 'checkout.session.expired': {
-//       const session = event.data.object as Stripe.Checkout.Session;
-//       await handleCheckoutSessionCanceled(session);
-//       break;
-//     }
+    console.log(`Payment ${payment.id} marked as SUCCESS`);
+  }
+}
 
-//     default:
-//       console.log('Unhandled Stripe event type:', event.type);
-//       return { status: 'unhandled_event', type: event.type };
-//   }
-// };
+// Handle failed payment intent
+async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
+  console.log('Payment failed:', paymentIntent.id);
 
-// // Handle one-time checkout session completion
+  const payment = await prisma.payment.findFirst({
+    where: { stripePaymentId: paymentIntent.id },
+    include: {
+      user: {
+        include: {
+          couple: true,
+        },
+      },
+    },
+  });
 
-// const handleCheckoutSessionCompleted = async (
-//   session: Stripe.Checkout.Session,
-// ) => {
-//   const paymentId = session.metadata?.paymentId;
-//   if (!paymentId) return;
+  if (payment) {
+    // Update payment status to FAILED
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: PaymentStatus.FAILED },
+    });
 
-//   const stripeIdToLink =
-//     session.mode === 'subscription'
-//       ? (session.subscription as string | undefined)
-//       : (session.payment_intent as string | undefined);
+    // Cancel subscription for user and partner if payment failed
+    if (payment.user.coupleId) {
+      // Update both users in the couple
+      await prisma.user.updateMany({
+        where: { coupleId: payment.user.coupleId },
+        data: {
+          subscriptionStart: null,
+          subscriptionEnd: null,
+        },
+      });
 
-//   if (!stripeIdToLink) {
-//     console.log(
-//       `No primary Stripe ID (Subscription/PaymentIntent) on session ${session.id}, skipping immediate update.`,
-//     );
-//   }
+      // Unlink subscription from couple
+      await prisma.subscription.updateMany({
+        where: { coupleId: payment.user.coupleId },
+        data: { coupleId: null },
+      });
 
-//   await prisma.payment.update({
-//     where: { id: paymentId },
-//     data: {
-//       // Save the session ID
-//       stripeSessionId: session.id,
-//       // Save the subscription ID if it's a subscription
-//       ...(session.mode === 'subscription' &&
-//         session.subscription && {
-//           stripeSubscriptionId: session.subscription as string,
-//         }),
-//       // Save the payment intent ID if it's a one-time payment
-//       ...(session.mode === 'payment' &&
-//         session.payment_intent && {
-//           stripePaymentId: session.payment_intent as string,
-//         }),
+      console.log(`Subscription cancelled for couple ${payment.user.coupleId}`);
+    } else {
+      // Cancel for single user
+      await prisma.user.update({
+        where: { id: payment.userId },
+        data: {
+          subscriptionStart: null,
+          subscriptionEnd: null,
+        },
+      });
 
-//       status:
-//         session.mode === 'payment'
-//           ? PaymentStatus.SUCCESS
-//           : PaymentStatus.PENDING,
-//     },
-//   });
+      console.log(`Subscription cancelled for user ${payment.userId}`);
+    }
 
-//   return await prisma.payment.findUnique({ where: { id: paymentId } });
-// };
+    console.log(`Payment ${payment.id} marked as FAILED`);
+  }
+}
 
-// // Handle canceled checkout sessions
-// const handleCheckoutSessionCanceled = async (
-//   session: Stripe.Checkout.Session,
-// ) => {
-//   const paymentId = session.metadata?.paymentId;
-//   if (!paymentId) return;
+// Handle successful invoice payment (for subscription renewals)
+async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
+  console.log('Invoice payment succeeded:', invoice.id);
 
-//   await prisma.payment.update({
-//     where: { id: paymentId },
-//     data: {
-//       status: PaymentStatus.CANCELED,
-//       stripeSessionId: session.id,
-//     },
-//   });
+  if (!invoice.subscription) {
+    console.log('No subscription attached to invoice');
+    return;
+  }
 
-//   return await prisma.payment.findUnique({ where: { id: paymentId } });
-// };
+  const payment = await prisma.payment.findFirst({
+    where: { stripeSubscriptionId: invoice.subscription as string },
+    include: {
+      user: {
+        include: {
+          couple: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (payment) {
+    // Create new payment record for renewal
+    const newPayment = await prisma.payment.create({
+      data: {
+        userId: payment.userId,
+        subscriptionId: payment.subscriptionId,
+        amount: invoice.amount_paid / 100, 
+        status: PaymentStatus.SUCCESS,
+        stripePaymentId: (invoice.payment_intent as string) || '',
+        stripeSubscriptionId: invoice.subscription as string,
+        stripeCustomerId: invoice.customer as string,
+      },
+    });
+
+    // Update subscription end date based on invoice period
+    const periodEnd = new Date(invoice.period_end * 1000);
+
+    // Update for both users if in couple
+    if (payment.user.coupleId) {
+      await prisma.user.updateMany({
+        where: { coupleId: payment.user.coupleId },
+        data: {
+          subscriptionEnd: periodEnd,
+        },
+      });
+
+      console.log(
+        `Subscription renewed for couple ${payment.user.coupleId} until ${periodEnd}`,
+      );
+    } else {
+      await prisma.user.update({
+        where: { id: payment.userId },
+        data: {
+          subscriptionEnd: periodEnd,
+        },
+      });
+
+      console.log(
+        `Subscription renewed for user ${payment.userId} until ${periodEnd}`,
+      );
+    }
+
+    console.log(`Created renewal payment record: ${newPayment.id}`);
+  }
+}
+
+// Handle failed invoice payment
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  console.log('Invoice payment failed:', invoice.id);
+
+  if (!invoice.subscription) {
+    console.log('No subscription attached to invoice');
+    return;
+  }
+
+  const payment = await prisma.payment.findFirst({
+    where: { stripeSubscriptionId: invoice.subscription as string },
+    include: {
+      user: {
+        include: {
+          couple: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (payment) {
+    // Create failed payment record for renewal attempt
+    await prisma.payment.create({
+      data: {
+        userId: payment.userId,
+        subscriptionId: payment.subscriptionId,
+        amount: invoice.amount_due / 100,
+        status: PaymentStatus.FAILED,
+        stripePaymentId: (invoice.payment_intent as string) || '',
+        stripeSubscriptionId: invoice.subscription as string,
+        stripeCustomerId: invoice.customer as string,
+      },
+    });
+
+    console.log(`Payment failure recorded for subscription renewal`);
+    // Note: Stripe will automatically retry failed payments
+    // You may want to notify the user about the failed payment
+  }
+}
+
+// Handle subscription deletion/cancellation
+async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+  console.log('Subscription deleted:', subscription.id);
+
+  const payment = await prisma.payment.findFirst({
+    where: { stripeSubscriptionId: subscription.id },
+    include: {
+      user: {
+        include: {
+          couple: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (payment) {
+    // Cancel for both users in couple
+    if (payment.user.coupleId) {
+      await prisma.user.updateMany({
+        where: { coupleId: payment.user.coupleId },
+        data: {
+          subscriptionStart: null,
+          subscriptionEnd: null,
+        },
+      });
+
+      // Unlink subscription from couple
+      await prisma.subscription.updateMany({
+        where: { coupleId: payment.user.coupleId },
+        data: { coupleId: null },
+      });
+
+      console.log(`Subscription cancelled for couple ${payment.user.coupleId}`);
+    } else {
+      // Cancel for single user
+      await prisma.user.update({
+        where: { id: payment.userId },
+        data: {
+          subscriptionStart: null,
+          subscriptionEnd: null,
+        },
+      });
+
+      console.log(`Subscription cancelled for user ${payment.userId}`);
+    }
+  }
+}
+
+// Handle subscription update (status changes, plan changes, etc.)
+async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+  console.log('Subscription updated:', subscription.id);
+
+  const payment = await prisma.payment.findFirst({
+    where: { stripeSubscriptionId: subscription.id },
+    include: {
+      user: {
+        include: {
+          couple: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (payment) {
+    // Update subscription end date based on current period
+    const periodEnd = new Date(subscription.current_period_end * 1000);
+
+    // Update for both users if in couple
+    if (payment.user.coupleId) {
+      await prisma.user.updateMany({
+        where: { coupleId: payment.user.coupleId },
+        data: {
+          subscriptionEnd: periodEnd,
+        },
+      });
+
+      console.log(
+        `Updated subscription end date for couple ${payment.user.coupleId} to ${periodEnd}`,
+      );
+    } else {
+      await prisma.user.update({
+        where: { id: payment.userId },
+        data: {
+          subscriptionEnd: periodEnd,
+        },
+      });
+
+      console.log(
+        `Updated subscription end date for user ${payment.userId} to ${periodEnd}`,
+      );
+    }
+
+    // If subscription is cancelled but not yet expired
+    if (
+      subscription.status === 'canceled' ||
+      subscription.cancel_at_period_end
+    ) {
+      console.log(
+        `Subscription ${subscription.id} will be cancelled at period end: ${periodEnd}`,
+      );
+    }
+  }
+}
+
+// Handle checkout session completed (if using Stripe Checkout)
+async function handleCheckoutSessionCompleted(
+  session: Stripe.Checkout.Session,
+) {
+  console.log('Checkout session completed:', session.id);
+
+  // If you're using Stripe Checkout, you might have stored the session ID
+  if (session.payment_intent) {
+    const payment = await prisma.payment.findFirst({
+      where: { stripeSessionId: session.id },
+      include: {
+        user: {
+          include: {
+            couple: true,
+          },
+        },
+      },
+    });
+
+    if (payment) {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: PaymentStatus.SUCCESS,
+          stripePaymentId: session.payment_intent as string,
+        },
+      });
+
+      console.log(`Checkout session completed for payment ${payment.id}`);
+    }
+  }
+}
+
+// Handle checkout session expired
+async function handleCheckoutSessionExpired(session: Stripe.Checkout.Session) {
+  console.log('Checkout session expired:', session.id);
+
+  const payment = await prisma.payment.findFirst({
+    where: { stripeSessionId: session.id },
+  });
+
+  if (payment) {
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: PaymentStatus.CANCELED },
+    });
+
+    console.log(`Checkout session expired for payment ${payment.id}`);
+  }
+}

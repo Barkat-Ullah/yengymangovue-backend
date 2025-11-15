@@ -4,7 +4,10 @@ import { AuthRouters } from '../modules/Auth/Auth.routes';
 import { UserRouters } from '../modules/User/user.routes';
 import { PaymentRoutes } from '../modules/Payment/payment.route';
 import { BillboardRoutes } from '../modules/Billboard/Billboard.routes';
-import { SecurityRoutes } from '../modules/Security/Security.routes';
+import { SecurityRouter } from '../modules/Security/Security.routes';
+import { EventRoutes } from '../modules/Event/Event.routes';
+import { SubscriptionRoutes } from '../modules/Subscription/Subscription.routes';
+import { MetaRoutes } from '../modules/Meta/Meta.routes';
 
 const router = express.Router();
 
@@ -31,7 +34,19 @@ const moduleRoutes = [
   },
   {
     path: '/security',
-    route: SecurityRoutes,
+    route: SecurityRouter,
+  },
+  {
+    path: '/event',
+    route: EventRoutes,
+  },
+  {
+    path: '/subscription',
+    route: SubscriptionRoutes,
+  },
+  {
+    path: '/meta',
+    route: MetaRoutes,
   },
 ];
 

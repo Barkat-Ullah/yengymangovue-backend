@@ -1,6 +1,7 @@
 model User {
   id       String       @id @default(auto()) @map("_id") @db.ObjectId
   fullName String
+  nickName String?
   email    String       @unique
   password String
   profile  String?
@@ -15,14 +16,18 @@ model User {
   isEmailVerified Boolean @default(false)
   isDeleted       Boolean @default(false)
 
-  stripeCustomerId String?
+  stripeCustomerId  String?
+  subscriptionStart DateTime?
+  subscriptionEnd   DateTime?
 
   coupleId String? @unique @db.ObjectId
   couple   Couple? @relation(fields: [coupleId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   payments      Payment[]
   notifications NotificationUser[]
-  billboards Billboard[] @relation("BillboardCreatedBy")
+  billboards    Billboard[]        @relation("BillboardCreatedBy")
+  events        Event[]            @relation("CreatedEvents")
+  event         Event[]            @relation("ApprovedEvents")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -37,6 +42,8 @@ model Couple {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  events    Event[]
+  subscriptions Subscription?
 
   @@map("couples")
 }

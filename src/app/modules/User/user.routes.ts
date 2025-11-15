@@ -37,7 +37,7 @@ router.put(
 router.put(
   '/user-status/:id',
   auth(UserRoleEnum.ADMIN),
-  validateRequest.body(userValidation.updateUserStatus),
+  // validateRequest.body(userValidation.updateUserStatus),
   UserControllers.updateUserStatus,
 );
 router.put(

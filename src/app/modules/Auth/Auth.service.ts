@@ -4,7 +4,13 @@ import httpStatus from 'http-status';
 import { Secret, SignOptions } from 'jsonwebtoken';
 import config from '../../../config';
 import AppError from '../../errors/AppError';
-import { User, UserRoleEnum, UserStatus } from '@prisma/client';
+import {
+  PaymentStatus,
+  SubscriptionType,
+  User,
+  UserRoleEnum,
+  UserStatus,
+} from '@prisma/client';
 import { Response } from 'express';
 import {
   getOtpStatusMessage,
@@ -155,15 +161,57 @@ const connectWithInviteCode = async (userId: string, inviteCode: string) => {
     // Create Couple
     const couple = await tx.couple.create({ data: {} });
 
+    const subscription = await tx.subscription.findFirst({
+      where: {
+        duration: SubscriptionType.FREELY,
+      },
+    });
+    // console.log(subscription);
+
+    if (!subscription) {
+      throw new AppError(
+        httpStatus.NOT_FOUND,
+        'Free subscription not found. Please create one from admin panel.',
+      );
+    }
+
+    await tx.payment.create({
+      data: {
+        userId,
+        subscriptionId: subscription.id,
+        amount: subscription.price,
+        currency: 'usd',
+        status: PaymentStatus.SUCCESS,
+        // stripePaymentId: stripePaymentId ,
+        // stripeSubscriptionId,
+        // stripeCustomerId: customerId,
+      },
+    });
+
+    const startDate = new Date();
+    const endDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
     // Link both to the couple
     await tx.user.update({
       where: { id: currentUser.id },
-      data: { coupleId: couple.id, isConnected: true, invite_code: null },
+      data: {
+        coupleId: couple.id,
+        isConnected: true,
+        invite_code: null,
+        subscriptionStart: startDate,
+        subscriptionEnd: endDate,
+      },
     });
 
     await tx.user.update({
       where: { id: partner.id },
-      data: { coupleId: couple.id, isConnected: true, invite_code: null },
+      data: {
+        coupleId: couple.id,
+        isConnected: true,
+        invite_code: null,
+        subscriptionStart: startDate,
+        subscriptionEnd: endDate,
+      },
     });
 
     return { message: 'Connected successfully!' };

@@ -12,4 +12,4 @@ router.get('/:type', PageContentController.getPageContent);
 // Update page content by type
 router.put('/:type', PageContentController.updatePageContent);
 
-export default router;
+export const SecurityRouter = router;

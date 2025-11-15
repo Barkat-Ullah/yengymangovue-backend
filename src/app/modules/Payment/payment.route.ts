@@ -16,7 +16,7 @@ router.get(
   auth(UserRoleEnum.ADMIN),
   PaymentController.getSingleForAdmin,
 );
-router.get('/', auth(UserRoleEnum.USER), PaymentController.getAllForUser);
+// router.get('/', auth(UserRoleEnum.USER), PaymentController.getAllForUser);
 router.get('/:id', auth(UserRoleEnum.USER), PaymentController.getSingleForUser);
 router.get(
   '/session/:stripeSessionId',

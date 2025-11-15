@@ -5,7 +5,7 @@ model Billboard {
 
     coupleId    String @db.ObjectId
     couple      Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
-    
+
     createdById String @db.ObjectId
     createdBy   User   @relation("BillboardCreatedBy", fields: [createdById], references: [id])
 
