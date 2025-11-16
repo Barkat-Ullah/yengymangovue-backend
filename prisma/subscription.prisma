@@ -2,7 +2,7 @@ model Subscription {
     id              String           @id @default(auto()) @map("_id") @db.ObjectId
     title           String
     price           Float
-    discountPercent   Float?           @default(0) //0 means 0%
+    discountPercent   Float?           @default(0) 
     stripePriceId   String?
     stripeProductId String?
     duration        SubscriptionType

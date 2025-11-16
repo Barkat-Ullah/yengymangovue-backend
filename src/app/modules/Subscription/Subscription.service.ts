@@ -466,6 +466,7 @@ const deleteMySubscription = async (userId: string) => {
   };
 };
 
+
 const updateIntoDb = async (id: string, data: Partial<any>) => {
   const { title, price, duration, discountPercent, isDiscounted } = data;
 
@@ -489,12 +490,12 @@ const updateIntoDb = async (id: string, data: Partial<any>) => {
   }
 
   // Prevent update if assigned to couple
-  if (subscription.coupleId) {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      'Cannot modify a subscription that is already assigned to a couple',
-    );
-  }
+  // if (subscription.coupleId) {
+  //   throw new AppError(
+  //     httpStatus.BAD_REQUEST,
+  //     'Cannot modify a subscription that is already assigned to a couple',
+  //   );
+  // }
 
   // Parse inputs if provided
   const originalPrice =
