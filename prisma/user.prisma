@@ -23,11 +23,17 @@ model User {
   coupleId String? @unique @db.ObjectId
   couple   Couple? @relation(fields: [coupleId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
-  payments      Payment[]
-  notifications NotificationUser[]
-  billboards    Billboard[]        @relation("BillboardCreatedBy")
-  events        Event[]            @relation("CreatedEvents")
-  event         Event[]            @relation("ApprovedEvents")
+  payments   Payment[]
+  billboards Billboard[] @relation("BillboardCreatedBy")
+  events     Event[]     @relation("CreatedEvents")
+  event      Event[]     @relation("ApprovedEvents")
+
+  // Chat Relations
+  sentChats     Chat[]         @relation("ChatSender")
+  receivedChats Chat[]         @relation("ChatReceiver")
+  //notification
+  notifications Notification[] @relation("Receiver")
+  notification  Notification[] @relation("Sender")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -40,10 +46,12 @@ model Couple {
   users      User[]
   billboards Billboard[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  events    Event[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  events        Event[]
   subscriptions Subscription?
+
+  room Room? @relation("CoupleRoom")
 
   @@map("couples")
 }

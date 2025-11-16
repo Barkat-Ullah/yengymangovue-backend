@@ -22,7 +22,7 @@ router.get('/:id', auth('ANY'), UserControllers.getUserDetails);
 
 router.delete('/soft-delete', auth('ANY'), UserControllers.softDeleteUser);
 router.delete(
-  '/hard-delete/:id',
+  '/hard-delete/:coupleId',
   auth(UserRoleEnum.ADMIN),
   UserControllers.hardDeleteUser,
 );

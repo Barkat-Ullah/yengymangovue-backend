@@ -16,7 +16,7 @@ const getAllUsersFromDB = async (query: Record<string, any>) => {
   const couples = await prisma.couple.findMany({
     where: {
       users: {
-        every: { role: 'USER', isDeleted: false },
+        every: { role: 'USER' },
       },
     },
     include: {
@@ -30,7 +30,6 @@ const getAllUsersFromDB = async (query: Record<string, any>) => {
           status: true,
           coupleId: true,
         },
-        where: { isDeleted: false },
         orderBy: { fullName: 'asc' },
       },
     },
@@ -51,7 +50,7 @@ const getAllUsersFromDB = async (query: Record<string, any>) => {
             : 'MIXED';
 
       return {
-        id: couple.id,
+        coupleId: couple.id,
         partner1: {
           id: partner1.id,
           name: partner1.fullName,
@@ -65,11 +64,11 @@ const getAllUsersFromDB = async (query: Record<string, any>) => {
           profile: partner2.profile,
         },
         status: combinedStatus,
-        actions: couple.id,
+        // actions: couple.id,
       };
     });
 
-  // Extract filters
+
   const { page = 1, limit = 10, searchTerm, status } = query;
 
   let filteredData = [...tableData];
@@ -86,7 +85,7 @@ const getAllUsersFromDB = async (query: Record<string, any>) => {
     );
   }
 
-  // 🟢 Status filter
+
   if (status) {
     filteredData = filteredData.filter(couple => couple.status === status);
   }
@@ -108,7 +107,6 @@ const getAllUsersFromDB = async (query: Record<string, any>) => {
     data: paginatedData,
   };
 };
-
 
 const updateUserStatus = async (id: string) => {
   return await prisma.$transaction(async tx => {
@@ -148,6 +146,7 @@ const updateUserStatus = async (id: string) => {
     };
   });
 };
+
 const getMyProfileFromDB = async (id: string) => {
   const Profile = await prisma.user.findUnique({
     where: {
@@ -170,6 +169,7 @@ const getMyProfileFromDB = async (id: string) => {
               fullName: true,
               email: true,
               profile: true,
+              nickName: true,
             },
           },
         },
@@ -235,44 +235,82 @@ const updateUserApproval = async (userId: string) => {
   // return result;
 };
 
-const hardDeleteUserIntoDB = async (id: string, adminId: string) => {
-  // const adminUser = await prisma.user.findUnique({
-  //   where: {
-  //     id: adminId,
-  //     role: UserRoleEnum.ADMIN,
-  //   },
-  // });
-  // if (!adminUser) {
-  //   throw new AppError(httpStatus.UNAUTHORIZED, 'You are not a admin');
-  // }
-  // return await prisma.$transaction(
-  //   async tx => {
-  //     // related tables delete
-  //     await tx.goal.deleteMany({ where: { userId: id } });
-  //     await tx.message.deleteMany({ where: { senderId: id } });
-  //     await tx.message.deleteMany({ where: { receiverId: id } });
-  //     await tx.payment.deleteMany({ where: { userId: id } });
-  //     await tx.motivation.deleteMany({ where: { userId: id } });
-  //     await tx.notificationUser.deleteMany({ where: { userId: id } });
-  //     await tx.vision.deleteMany({ where: { userId: id } });
-  //     await tx.community.deleteMany({ where: { userId: id } });
-  //     await tx.communityMembers.deleteMany({ where: { userId: id } });
-  //     await tx.follow.deleteMany({
-  //       where: {
-  //         OR: [{ followerId: id }, { followingId: id }],
-  //       },
-  //     });
-  //     const deletedUser = await tx.user.delete({
-  //       where: { id },
-  //       select: { id: true, email: true },
-  //     });
-  //     return deletedUser;
-  //   },
-  //   {
-  //     timeout: 20000,
-  //     maxWait: 5000,
-  //   },
-  // );
+const hardDeleteUserIntoDB = async (coupleId: string, adminId: string) => {
+  const adminUser = await prisma.user.findUnique({
+    where: {
+      id: adminId,
+      role: UserRoleEnum.ADMIN,
+    },
+  });
+  if (!adminUser) {
+    throw new AppError(httpStatus.UNAUTHORIZED, 'You are not an admin');
+  }
+
+  const couple = await prisma.couple.findUnique({
+    where: { id: coupleId },
+    include: {
+      users: {
+        select: { id: true, fullName: true, email: true }, 
+      },
+    },
+  });
+
+  if (!couple || couple.users.length !== 2) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Valid couple not found');
+  }
+
+  const userIds = couple.users.map(u => u.id);
+
+  return await prisma.$transaction(
+    async tx => {
+      // Step 1: Delete related records first (chats, rooms, etc.)
+      await tx.chat.deleteMany({
+        where: {
+          OR: [{ senderId: { in: userIds } }, { receiverId: { in: userIds } }],
+        },
+      });
+
+      await tx.room.deleteMany({ where: { coupleId } });
+
+      await tx.payment.deleteMany({ where: { userId: { in: userIds } } });
+
+      await tx.event.deleteMany({
+        where: {
+          OR: [
+            { createdById: { in: userIds } },
+            { approvedById: { in: userIds } },
+          ],
+        },
+      });
+
+      await tx.billboard.deleteMany({ where: { coupleId } });
+
+      await tx.notification.deleteMany({
+        where: { receiverId: { in: userIds } },
+      });
+
+      // Step 2: Delete users FIRST (before couple, to avoid SetNull cascade issue)
+      const deletedUsers = await tx.user.deleteMany({
+        where: { coupleId },
+      });
+
+      // Step 3: Delete couple LAST (now no users linked)
+     await tx.couple.delete({
+        where: { id: coupleId },
+      });
+
+      // Return summary
+      return {
+        deletedCouple: { id: coupleId },
+        deletedUsers: { count: deletedUsers.count, users: couple.users }, // Original users for log
+        message: `Couple ${coupleId} and ${deletedUsers.count} users deleted successfully`,
+      };
+    },
+    {
+      timeout: 20000,
+      maxWait: 5000,
+    },
+  );
 };
 
 const updateUserIntoDb = async (req: Request, id: string) => {
@@ -327,13 +365,15 @@ const updateUserIntoDb = async (req: Request, id: string) => {
 };
 
 const softDeleteUserIntoDB = async (id: string) => {
-  const result = await prisma.user.update({
+  const user = await prisma.user.findUnique({
     where: { id },
+  });
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+  }
+  const result = await prisma.user.updateMany({
+    where: { coupleId: user.coupleId },
     data: { isDeleted: true },
-    select: {
-      id: true,
-      isDeleted: true,
-    },
   });
   return result;
 };

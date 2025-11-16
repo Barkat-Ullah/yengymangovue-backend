@@ -59,9 +59,7 @@ const createIntoDb = async (req: Request) => {
   return event;
 };
 
-const getMyEvent = async (userId: string) => {
-  // console.log('Fetching my Event for user:', userId);
-
+const getMyEvent = async (userId: string, date: string) => {
   // Get user's couple information
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -79,11 +77,14 @@ const getMyEvent = async (userId: string) => {
     );
   }
 
+  const dateObj = new Date(date);
+
   // Get all events for this couple
   const events = await prisma.event.findMany({
     where: {
       coupleId: user.coupleId,
-      // isDeleted: false,
+      date: dateObj,
+      isDeleted: false,
     },
     include: {
       createdBy: {
@@ -131,7 +132,7 @@ const getMyEvent = async (userId: string) => {
     return await prisma.event.findMany({
       where: {
         coupleId: user.coupleId,
-        // isDeleted: false,
+        isDeleted: false,
       },
       include: {
         createdBy: {

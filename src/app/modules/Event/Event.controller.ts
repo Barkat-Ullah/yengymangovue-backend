@@ -17,8 +17,9 @@ const createIntoDb = catchAsync(async (req: Request, res: Response) => {
 
 const getMyEvent = catchAsync(async (req: Request, res: Response) => {
   const userId = req.user?.id;
+  const { date } = req.query;
 
-  const result = await EventServices.getMyEvent(userId);
+  const result = await EventServices.getMyEvent(userId, date as string);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,

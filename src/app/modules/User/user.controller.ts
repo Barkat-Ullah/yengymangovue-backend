@@ -32,7 +32,7 @@ const getUserDetails = catchAsync(async (req, res) => {
   sendResponse(res, {
     statusCode: httpStatus.OK,
     message: 'User details retrieved successfully',
-    data: result,
+    data: result?.users,
   });
 });
 
@@ -81,12 +81,12 @@ const softDeleteUser = catchAsync(async (req, res) => {
 });
 const hardDeleteUser = catchAsync(async (req, res) => {
   const userId = req.user.id;
-  const { id } = req.params;
-  const result = await UserServices.hardDeleteUserIntoDB(id, userId);
+const { coupleId } = req.params;
+  const result = await UserServices.hardDeleteUserIntoDB(coupleId, userId);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
-    message: 'User soft deleted successfully',
+    message: 'User hard deleted successfully',
     data: result,
   });
 });

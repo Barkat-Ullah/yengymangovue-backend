@@ -1,13 +1,11 @@
 import { createServer, Server as HTTPServer } from 'http';
 import app from './app';
 import config from './config';
-
-// import { setupWebSocket } from './app/middlewares/webSocket';
+import { setupWebSocket } from './app/middlewares/webSocket';
 import seedSuperAdmin from './app/DB';
 
 const port = config.port || 5000;
 
-// Declare server outside main to make it accessible globally
 let server: HTTPServer | undefined;
 
 async function main() {
@@ -25,8 +23,8 @@ async function main() {
 
     // WebSocket setup (after listen)
     // console.log('🔌 Setting up WebSocket...');
-    // await setupWebSocket(server);
-    // console.log('✅ WebSocket setup complete!');
+    await setupWebSocket(server);
+    console.log('✅ WebSocket setup complete!');
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
