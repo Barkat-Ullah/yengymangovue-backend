@@ -13,17 +13,26 @@ const getAllMeta = async (period: string = 'monthly') => {
   if (typeof period !== 'string') {
     throw new AppError(httpStatus.BAD_REQUEST, 'Period must be a string');
   }
+
   const { start: periodStart, end: periodEnd } = getDateRange(period);
+
+  // Date range for filtering
   const dateWhere = {
     createdAt: {
       gte: periodStart,
       lte: periodEnd,
     },
   };
+
+  // Total couples created in this period
   const totalCouple = await prisma.couple.count({ where: dateWhere });
+
+  // Total subscriptions (active only)
   const totalSubscription = await prisma.subscription.count({
     where: { isActive: true },
   });
+
+  // Total revenue in selected period
   const totalRevenue = await prisma.payment
     .aggregate({
       where: {
@@ -34,31 +43,46 @@ const getAllMeta = async (period: string = 'monthly') => {
     })
     .then(agg => agg._sum.amount || 0);
 
-  const monthlyPlanUser = await prisma.couple.count({
-    where: {
-      subscriptions: {
-        duration: SubscriptionType.MONTHLY,
-      },
+  // Count active monthly subscriptions (per couple)
+const monthlyPlanUsersCount = await prisma.user.count({
+  where: {
+    subscriptionEnd: { gt: new Date() },
+    subscriptionId: {
+      in: await prisma.subscription
+        .findMany({
+          where: { duration: 'MONTHLY' },
+          select: { id: true },
+        })
+        .then(subs => subs.map(s => s.id)),
     },
-  });
-  const yearlyPlanUser = await prisma.couple.count({
-    where: {
-      subscriptions: {
-        duration: SubscriptionType.YEARLY,
-      },
-    },
-  });
- const monthlyGrowth = await getMonthlyRevenue();
-  console.log({ monthlyPlanUser, yearlyPlanUser });
+  },
+});
 
-  console.log({ totalCouple, totalRevenue, totalSubscription });
+const yearlyPlanUsersCount = await prisma.user.count({
+  where: {
+    subscriptionEnd: { gt: new Date() },
+    subscriptionId: {
+      in: await prisma.subscription
+        .findMany({
+          where: { duration: 'YEARLY' },
+          select: { id: true },
+        })
+        .then(subs => subs.map(s => s.id)),
+    },
+  },
+});
+
+
+  console.log({ monthlyPlanUsersCount, yearlyPlanUsersCount });
+
+  const monthlyGrowth = await getMonthlyRevenue();
 
   return {
     totalCouple,
     totalRevenue,
     totalSubscription,
-    monthlyPlanUser,
-    yearlyPlanUser,
+    monthlyPlanUsersCount,
+    yearlyPlanUsersCount,
     monthlyGrowth,
   };
 };

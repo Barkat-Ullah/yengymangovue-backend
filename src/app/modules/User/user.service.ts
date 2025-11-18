@@ -1,5 +1,10 @@
 import httpStatus from 'http-status';
-import { User, UserRoleEnum, UserStatus } from '@prisma/client';
+import {
+  SubscriptionType,
+  User,
+  UserRoleEnum,
+  UserStatus,
+} from '@prisma/client';
 import QueryBuilder from '../../builder/QueryBuilder';
 import { prisma } from '../../utils/prisma';
 
@@ -21,6 +26,11 @@ const getAllUsersFromDB = async (query: Record<string, any>) => {
     },
     include: {
       users: {
+        where: {
+          subscriptionId: {
+            not: null,
+          },
+        },
         select: {
           id: true,
           fullName: true,
@@ -29,6 +39,10 @@ const getAllUsersFromDB = async (query: Record<string, any>) => {
           profile: true,
           status: true,
           coupleId: true,
+          subscriptionId: true,
+          subscriptionStart: true,
+          subscriptionEnd: true,
+          createdAt: true,
         },
         orderBy: { fullName: 'asc' },
       },
@@ -36,44 +50,58 @@ const getAllUsersFromDB = async (query: Record<string, any>) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  // Build table data
-  const tableData = couples
-    .filter(couple => couple.users.length === 2)
-    .map(couple => {
-      const [partner1, partner2] = couple.users;
+  const tableData = await Promise.all(
+    couples
+      .filter(couple => couple.users.length === 2)
+      .map(async couple => {
+        const [partner1, partner2] = couple.users;
 
-      const combinedStatus =
-        partner1.status === 'ACTIVE' && partner2.status === 'ACTIVE'
-          ? 'ACTIVE'
-          : partner1.status === 'SUSPENDED' && partner2.status === 'SUSPENDED'
-            ? 'SUSPENDED'
-            : 'MIXED';
+        const combinedStatus =
+          partner1.status === 'ACTIVE' && partner2.status === 'ACTIVE'
+            ? 'ACTIVE'
+            : partner1.status === 'SUSPENDED' && partner2.status === 'SUSPENDED'
+              ? 'SUSPENDED'
+              : 'MIXED';
 
-      return {
-        coupleId: couple.id,
-        partner1: {
-          id: partner1.id,
-          name: partner1.fullName,
-          email: partner1.email,
-          profile: partner1.profile,
-        },
-        partner2: {
-          id: partner2.id,
-          name: partner2.fullName,
-          email: partner2.email,
-          profile: partner2.profile,
-        },
-        status: combinedStatus,
-        // actions: couple.id,
-      };
-    });
+        const subscriptionStatus = partner1.subscriptionId
+          ? 'Active'
+          : 'Not-Active';
 
+        const plan = partner1.subscriptionId
+          ? await prisma.subscription.findUnique({
+              where: { id: partner1.subscriptionId },
+              select: { duration: true },
+            })
+          : null;
+
+        return {
+          coupleId: couple.id,
+          partner1: {
+            id: partner1.id,
+            name: partner1.fullName,
+            email: partner1.email,
+            profile: partner1.profile,
+            subscription: subscriptionStatus,
+            join: partner1.createdAt,
+          },
+          partner2: {
+            id: partner2.id,
+            name: partner2.fullName,
+            email: partner2.email,
+            profile: partner2.profile,
+            subscription: subscriptionStatus,
+            join: partner2.createdAt,
+          },
+          status: combinedStatus,
+          plan: plan?.duration,
+        };
+      }),
+  );
 
   const { page = 1, limit = 10, searchTerm, status } = query;
 
   let filteredData = [...tableData];
 
-  // 🔍 Search filter
   if (searchTerm) {
     const term = searchTerm.toLowerCase();
     filteredData = filteredData.filter(
@@ -85,12 +113,10 @@ const getAllUsersFromDB = async (query: Record<string, any>) => {
     );
   }
 
-
   if (status) {
     filteredData = filteredData.filter(couple => couple.status === status);
   }
 
-  // Pagination
   const skip = (Number(page) - 1) * Number(limit);
   const paginatedData = filteredData.slice(skip, skip + Number(limit));
   const total = filteredData.length;
@@ -250,7 +276,7 @@ const hardDeleteUserIntoDB = async (coupleId: string, adminId: string) => {
     where: { id: coupleId },
     include: {
       users: {
-        select: { id: true, fullName: true, email: true }, 
+        select: { id: true, fullName: true, email: true },
       },
     },
   });
@@ -272,7 +298,7 @@ const hardDeleteUserIntoDB = async (coupleId: string, adminId: string) => {
 
       await tx.room.deleteMany({ where: { coupleId } });
 
-      await tx.payment.deleteMany({ where: { userId: { in: userIds } } });
+      // await tx.payment.deleteMany({ where: { userId: { in: userIds } } });
 
       await tx.event.deleteMany({
         where: {
@@ -295,14 +321,14 @@ const hardDeleteUserIntoDB = async (coupleId: string, adminId: string) => {
       });
 
       // Step 3: Delete couple LAST (now no users linked)
-     await tx.couple.delete({
+      await tx.couple.delete({
         where: { id: coupleId },
       });
 
       // Return summary
       return {
         deletedCouple: { id: coupleId },
-        deletedUsers: { count: deletedUsers.count, users: couple.users }, // Original users for log
+        deletedUsers: { count: deletedUsers.count, users: couple.users },
         message: `Couple ${coupleId} and ${deletedUsers.count} users deleted successfully`,
       };
     },

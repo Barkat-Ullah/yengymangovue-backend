@@ -1,7 +1,5 @@
 import express from "express";
 import { MetaController } from "./Meta.controller";
-import validateRequest from "../../middlewares/validateRequest";
-
 
 const router = express.Router();
 

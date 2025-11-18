@@ -181,18 +181,7 @@ const getEventByIdFromDB = async (id: string, userId: string) => {
           profile: true,
         },
       },
-      // couple: {
-      //   include: {
-      //     users: {
-      //       select: {
-      //         id: true,
-      //         fullName: true,
-      //         email: true,
-      //         profile: true,
-      //       },
-      //     },
-      //   },
-      // },
+      
     },
   });
 

@@ -7,6 +7,7 @@ model User {
   profile  String?
   role     UserRoleEnum @default(USER)
   status   UserStatus   @default(ACTIVE)
+  fcmToken String?
 
   otp         String?
   otpExpiry   DateTime?
@@ -17,13 +18,13 @@ model User {
   isDeleted       Boolean @default(false)
 
   stripeCustomerId  String?
+  subscriptionId    String?
   subscriptionStart DateTime?
   subscriptionEnd   DateTime?
 
   coupleId String? @unique @db.ObjectId
   couple   Couple? @relation(fields: [coupleId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
-  payments   Payment[]
   billboards Billboard[] @relation("BillboardCreatedBy")
   events     Event[]     @relation("CreatedEvents")
   event      Event[]     @relation("ApprovedEvents")
@@ -52,6 +53,7 @@ model Couple {
   subscriptions Subscription?
 
   room Room? @relation("CoupleRoom")
+  payments Payment[]
 
   @@map("couples")
 }

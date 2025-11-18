@@ -9,14 +9,16 @@ import AppError from '../app/errors/AppError';
 import { uploadToDigitalOceanAWS } from '../app/utils/uploadToDigitalOceanAWS';
 import { prisma } from '../app/utils/prisma';
 
-
-
-
 export const setupMiddlewares = (app: Application): void => {
   // CORS
   app.use(
     cors({
-      origin: ['http://localhost:3001', 'http://localhost:3000'],
+      origin: [
+        'http://localhost:3001',
+        'http://localhost:3000',
+        'https://yengymangovue-dashboard.vercel.app',
+      ],
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowedHeaders: [
         'Content-Type',
         'Authorization',

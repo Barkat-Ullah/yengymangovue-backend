@@ -24,9 +24,6 @@ setupMiddlewares(app);
 
 app.use('/api/v1', apiLimiter, router);
 
-// Stripe webhook (if needed, before error handler)
-
-
 // Upload route (after main routes, before error handler)
 app.post(
   '/api/v1/upload-image',

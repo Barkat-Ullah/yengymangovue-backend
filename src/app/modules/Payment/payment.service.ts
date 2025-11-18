@@ -1,5 +1,4 @@
 import httpStatus from 'http-status';
-import QueryBuilder from '../../builder/QueryBuilder';
 import { prisma } from '../../utils/prisma';
 import AppError from '../../errors/AppError';
 import { PaymentStatus, UserRoleEnum } from '@prisma/client';
@@ -7,88 +6,97 @@ import { PaymentStatus, UserRoleEnum } from '@prisma/client';
 const getAllPayments = async (query: Record<string, any>) => {
   const { page = 1, limit = 10, status, ...otherQuery } = query;
 
+  // Build where clause
   const where: any = {
     ...otherQuery,
   };
 
+  // Default to non-pending statuses, but allow override
   if (status) {
-    where.status = status; 
+    where.status = status;
+  } else {
+    where.status = {
+      in: [PaymentStatus.SUCCESS, PaymentStatus.FAILED, PaymentStatus.CANCELED],
+    };
   }
 
   const total = await prisma.payment.count({ where });
+
   const payments = await prisma.payment.findMany({
     where,
-    include: {
-      user: {
+    select: {
+      id: true,
+      amount: true,
+      currency: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+      stripePaymentId: true,
+      stripeSubscriptionId: true,
+      stripeCustomerId: true,
+      subscription: {
+        select: {
+          duration: true,
+          title: true,
+        },
+      },
+
+      couple: {
         select: {
           id: true,
-          fullName: true,
-          email: true,
-          profile: true,
-          coupleId: true,
-          couple: {
+          users: {
             select: {
               id: true,
-              subscriptions: {
-                select: { title: true, duration: true },
-              },
-              users: {
-                select: { fullName: true },
-                where: { isDeleted: false },
-              },
+              fullName: true,
+              email: true,
             },
           },
         },
       },
-
     },
     orderBy: { createdAt: 'desc' },
     skip: (Number(page) - 1) * Number(limit),
     take: Number(limit),
   });
 
-  // Transformation
-  const uniquePayments = new Map<string, any>();
+  // Transformation: No need for Map if IDs are unique (they are)
   let totalRevenue = 0;
-
-  payments.forEach(payment => {
-    const key = payment.id; 
-
-    if (payment.status === 'SUCCESS' && payment.amount > 0) {
+  const transformedData = payments.map(payment => {
+    if (payment.status === PaymentStatus.SUCCESS && payment.amount > 0) {
       totalRevenue += payment.amount;
     }
 
-    let customerName = payment.user.fullName;
-    let plan =
-      payment.user.couple?.subscriptions?.title ||
-      payment.user.couple?.subscriptions?.duration
-        ?.toLowerCase()
-        ?.replace('monthly', 'Monthly')
-        .replace('yearly', 'Yearly') ||
-      'N/A';
+    let customerName = 'Unknown';
     if (
-      payment.user.coupleId &&
-      payment.user.couple &&
-      payment.user.couple.users?.length > 0
+      payment.couple &&
+      payment.couple.users &&
+      payment.couple.users.length > 0
     ) {
-      const coupleNames = payment.user.couple.users
+      const coupleNames = payment.couple.users
         .map((u: any) => u.fullName)
         .sort()
         .join(' & ');
       customerName = coupleNames;
     }
 
-    const transformedPayment = {
-      ...payment,
+    // FIXED: Get plan from subscription
+    const plan = payment.subscription?.duration ?? 'FREELY';
+
+    return {
+      id: payment.id,
+      amount: payment.amount,
+      currency: payment.currency,
+      status: payment.status,
+      stripePaymentId: payment.stripePaymentId,
+      stripeSubscriptionId: payment.stripeSubscriptionId,
+      stripeCustomerId: payment.stripeCustomerId,
       customerName,
       plan,
+      planTitle: payment.subscription?.title || plan, // Optional: full title
       formattedDate: new Date(payment.createdAt).toLocaleDateString('en-CA'),
+      createdAt: payment.createdAt,
     };
-
-    uniquePayments.set(key, transformedPayment);
   });
-
-  const transformedData = Array.from(uniquePayments.values());
 
   const totalPage = Math.ceil(total / Number(limit));
 
@@ -115,7 +123,7 @@ const singleTransactionHistory = async (query: {
     select: {
       id: true,
       amount: true,
-      userId: true,
+      // userId: true,
       paymentMethodType: true,
       createdAt: true,
       stripeCustomerId: true,
@@ -123,13 +131,13 @@ const singleTransactionHistory = async (query: {
       stripeSessionId: true,
       currency: true,
       status: true,
-      user: {
-        select: {
-          profile: true,
-          fullName: true,
-          email: true,
-        },
-      },
+      // user: {
+      //   select: {
+      //     profile: true,
+      //     fullName: true,
+      //     email: true,
+      //   },
+      // },
     },
   });
   if (!result) {
@@ -146,7 +154,7 @@ const singleTransactionHistoryBySessionId = async (query: {
     select: {
       id: true,
       amount: true,
-      userId: true,
+      // userId: true,
       paymentMethodType: true,
       createdAt: true,
       stripeCustomerId: true,
@@ -155,14 +163,14 @@ const singleTransactionHistoryBySessionId = async (query: {
       currency: true,
       status: true,
 
-      user: {
-        select: {
-          profile: true,
-          fullName: true,
+      // user: {
+      //   select: {
+      //     profile: true,
+      //     fullName: true,
 
-          email: true,
-        },
-      },
+      //     email: true,
+      //   },
+      // },
     },
   });
   if (!result) {

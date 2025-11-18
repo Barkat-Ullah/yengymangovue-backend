@@ -177,14 +177,11 @@ const connectWithInviteCode = async (userId: string, inviteCode: string) => {
 
     await tx.payment.create({
       data: {
-        userId,
+        coupleId: couple.id,
         subscriptionId: subscription.id,
         amount: subscription.price,
         currency: 'usd',
         status: PaymentStatus.SUCCESS,
-        // stripePaymentId: stripePaymentId ,
-        // stripeSubscriptionId,
-        // stripeCustomerId: customerId,
       },
     });
 
@@ -198,6 +195,7 @@ const connectWithInviteCode = async (userId: string, inviteCode: string) => {
         coupleId: couple.id,
         isConnected: true,
         invite_code: null,
+        subscriptionId: subscription.id,
         subscriptionStart: startDate,
         subscriptionEnd: endDate,
       },
@@ -209,6 +207,7 @@ const connectWithInviteCode = async (userId: string, inviteCode: string) => {
         coupleId: couple.id,
         isConnected: true,
         invite_code: null,
+        subscriptionId: subscription.id,
         subscriptionStart: startDate,
         subscriptionEnd: endDate,
       },

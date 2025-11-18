@@ -12,6 +12,7 @@ model Subscription {
 
     isActive     Boolean  @default(true)
     isDiscounted Boolean?
+    payments Payment[]
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
