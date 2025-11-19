@@ -289,7 +289,6 @@ const hardDeleteUserIntoDB = async (coupleId: string, adminId: string) => {
 
   return await prisma.$transaction(
     async tx => {
-      // Step 1: Delete related records first (chats, rooms, etc.)
       await tx.chat.deleteMany({
         where: {
           OR: [{ senderId: { in: userIds } }, { receiverId: { in: userIds } }],
@@ -298,7 +297,13 @@ const hardDeleteUserIntoDB = async (coupleId: string, adminId: string) => {
 
       await tx.room.deleteMany({ where: { coupleId } });
 
-      // await tx.payment.deleteMany({ where: { userId: { in: userIds } } });
+      await tx.payment.deleteMany({ where: { coupleId } });
+
+      // 👉 THIS IS THE MISSING PART
+      await tx.subscription.updateMany({
+        where: { coupleId },
+        data: { coupleId: null },
+      });
 
       await tx.event.deleteMany({
         where: {
@@ -315,17 +320,14 @@ const hardDeleteUserIntoDB = async (coupleId: string, adminId: string) => {
         where: { receiverId: { in: userIds } },
       });
 
-      // Step 2: Delete users FIRST (before couple, to avoid SetNull cascade issue)
       const deletedUsers = await tx.user.deleteMany({
         where: { coupleId },
       });
 
-      // Step 3: Delete couple LAST (now no users linked)
       await tx.couple.delete({
         where: { id: coupleId },
       });
 
-      // Return summary
       return {
         deletedCouple: { id: coupleId },
         deletedUsers: { count: deletedUsers.count, users: couple.users },
@@ -475,6 +477,44 @@ const updateMyProfileIntoDB = async (
   });
 };
 
+const updateAdminProfile = async (
+  id: string,
+  file: Express.Multer.File | undefined,
+  payload: Partial<any>,
+) => {
+  const { fullName } = payload;
+
+  // Build update object dynamically
+  const ownUpdateData: any = {};
+
+  if (fullName) {
+    ownUpdateData.fullName = fullName;
+  }
+
+  // Handle profile image upload
+  if (file) {
+    const location = await uploadToDigitalOceanAWS(file);
+    ownUpdateData.profile = location.Location;
+  }
+
+  // Update admin user
+  const updatedCurrentUser = await prisma.user.update({
+    where: { id },
+    data: ownUpdateData,
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      profile: true,
+      role: true,
+      status: true,
+    },
+  });
+
+  return updatedCurrentUser;
+};
+
+
 export const UserServices = {
   getAllUsersFromDB,
   getMyProfileFromDB,
@@ -486,4 +526,5 @@ export const UserServices = {
   hardDeleteUserIntoDB,
   updateUserIntoDb,
   updateMyProfileIntoDB,
+  updateAdminProfile,
 };

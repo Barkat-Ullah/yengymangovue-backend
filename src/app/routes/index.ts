@@ -8,6 +8,7 @@ import { EventRoutes } from '../modules/Event/Event.routes';
 import { SubscriptionRoutes } from '../modules/Subscription/Subscription.routes';
 import { MetaRoutes } from '../modules/Meta/Meta.routes';
 import { notificationsRoute } from '../modules/Notifications/Notification.routes';
+import { FaqRoutes } from '../modules/Faq/Faq.routes';
 
 const router = express.Router();
 
@@ -47,6 +48,10 @@ const moduleRoutes = [
   {
     path: '/meta',
     route: MetaRoutes,
+  },
+  {
+    path: '/faq',
+    route: FaqRoutes,
   },
 ];
 

@@ -47,11 +47,11 @@ router.put(
 );
 
 router.put(
-  '/update-user/:id',
+  '/update-admin',
   upload.single('file'),
   auth(UserRoleEnum.ADMIN),
   validateRequest.body(userValidation.updateUser),
-  UserControllers.updateUser,
+  UserControllers.updateAdminProfile,
 );
 
 router.put(

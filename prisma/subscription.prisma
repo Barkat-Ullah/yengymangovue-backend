@@ -2,17 +2,17 @@ model Subscription {
     id              String           @id @default(auto()) @map("_id") @db.ObjectId
     title           String
     price           Float
-    discountPercent   Float?           @default(0) 
+    discountPercent Float?           @default(0)
     stripePriceId   String?
     stripeProductId String?
     duration        SubscriptionType
 
     coupleId String? @unique @db.ObjectId
-    couple   Couple? @relation(fields: [coupleId], references: [id])
+    couple   Couple? @relation(fields: [coupleId], references: [id], onDelete: NoAction)
 
-    isActive     Boolean  @default(true)
+    isActive     Boolean   @default(true)
     isDiscounted Boolean?
-    payments Payment[]
+    payments     Payment[]
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt

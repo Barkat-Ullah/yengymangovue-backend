@@ -34,6 +34,7 @@ const getAllPayments = async (query: Record<string, any>) => {
       stripePaymentId: true,
       stripeSubscriptionId: true,
       stripeCustomerId: true,
+      paymentMethodType:true,
       subscription: {
         select: {
           duration: true,
@@ -92,7 +93,7 @@ const getAllPayments = async (query: Record<string, any>) => {
       stripeCustomerId: payment.stripeCustomerId,
       customerName,
       plan,
-      planTitle: payment.subscription?.title || plan, // Optional: full title
+      planTitle: payment.subscription?.title || plan,
       formattedDate: new Date(payment.createdAt).toLocaleDateString('en-CA'),
       createdAt: payment.createdAt,
     };

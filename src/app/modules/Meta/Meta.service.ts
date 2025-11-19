@@ -25,7 +25,9 @@ const getAllMeta = async (period: string = 'monthly') => {
   };
 
   // Total couples created in this period
-  const totalCouple = await prisma.couple.count({ where: dateWhere });
+  const totalCouple = await prisma.couple.count({
+    where: dateWhere,
+  });
 
   // Total subscriptions (active only)
   const totalSubscription = await prisma.subscription.count({
@@ -44,34 +46,33 @@ const getAllMeta = async (period: string = 'monthly') => {
     .then(agg => agg._sum.amount || 0);
 
   // Count active monthly subscriptions (per couple)
-const monthlyPlanUsersCount = await prisma.user.count({
-  where: {
-    subscriptionEnd: { gt: new Date() },
-    subscriptionId: {
-      in: await prisma.subscription
-        .findMany({
-          where: { duration: 'MONTHLY' },
-          select: { id: true },
-        })
-        .then(subs => subs.map(s => s.id)),
+  const monthlyPlanUsersCount = await prisma.user.count({
+    where: {
+      subscriptionEnd: { gt: new Date() },
+      subscriptionId: {
+        in: await prisma.subscription
+          .findMany({
+            where: { duration: 'MONTHLY' },
+            select: { id: true },
+          })
+          .then(subs => subs.map(s => s.id)),
+      },
     },
-  },
-});
+  });
 
-const yearlyPlanUsersCount = await prisma.user.count({
-  where: {
-    subscriptionEnd: { gt: new Date() },
-    subscriptionId: {
-      in: await prisma.subscription
-        .findMany({
-          where: { duration: 'YEARLY' },
-          select: { id: true },
-        })
-        .then(subs => subs.map(s => s.id)),
+  const yearlyPlanUsersCount = await prisma.user.count({
+    where: {
+      subscriptionEnd: { gt: new Date() },
+      subscriptionId: {
+        in: await prisma.subscription
+          .findMany({
+            where: { duration: 'YEARLY' },
+            select: { id: true },
+          })
+          .then(subs => subs.map(s => s.id)),
+      },
     },
-  },
-});
-
+  });
 
   console.log({ monthlyPlanUsersCount, yearlyPlanUsersCount });
 

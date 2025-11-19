@@ -528,8 +528,6 @@ const updateIntoDb = async (id: string, data: Partial<any>) => {
 
     stripePriceId = newPrice.id;
   }
-  // const newIsActive =
-  //   isActive !== undefined ? isActive : !subscription.isActive;
 
   // Build update data
   const updateData: any = {

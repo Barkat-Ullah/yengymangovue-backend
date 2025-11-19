@@ -69,6 +69,8 @@ const updateUserApproval = catchAsync(async (req, res) => {
   });
 });
 
+
+
 const softDeleteUser = catchAsync(async (req, res) => {
   const id = req.user.id;
   const result = await UserServices.softDeleteUserIntoDB(id);
@@ -91,9 +93,11 @@ const { coupleId } = req.params;
   });
 });
 
-const updateUser = catchAsync(async (req, res) => {
-  const id = req.params.id;
-  const result = await UserServices.updateUserIntoDb(req, id);
+const updateAdminProfile = catchAsync(async (req, res) => {
+   const id = req.user.id;
+   const file = req.file;
+   const payload = JSON.parse(req.body.data);
+  const result = await UserServices.updateAdminProfile(id, file, payload);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -125,6 +129,6 @@ export const UserControllers = {
   updateUserApproval,
   softDeleteUser,
   hardDeleteUser,
-  updateUser,
+  updateAdminProfile,
   updateMyProfile,
 };

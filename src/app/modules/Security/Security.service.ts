@@ -15,6 +15,15 @@ const createPageContent = async (
   return page;
 };
 
+const getAllContent = async () => {
+  return await prisma.pageContent.findMany({
+    omit: {
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+};
+
 const getPageContent = async (
   type: 'REFUND' | 'TERMS' | 'PRIVACY',
 ): Promise<PageContent | null> => {
@@ -42,4 +51,5 @@ export const PageContentServices = {
   createPageContent,
   getPageContent,
   updatePageContent,
+  getAllContent,
 };

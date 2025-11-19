@@ -78,6 +78,9 @@ const loginWithOtpFromDB = async (
       name: userData.fullName,
       email: userData.email,
       role: userData.role,
+      isConnected: userData.isConnected,
+      invite_code: userData.invite_code,
+      isEmailVerified: userData.isEmailVerified,
       accessToken,
     };
   }
@@ -213,7 +216,45 @@ const connectWithInviteCode = async (userId: string, inviteCode: string) => {
       },
     });
 
-    return { message: 'Connected successfully!' };
+    const updatedCurrentUser = await tx.user.findUnique({
+      where: { id: currentUser.id },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        nickName: true,
+        profile: true,
+        role: true,
+        status: true,
+        isConnected: true,
+        subscriptionStart: true,
+        subscriptionEnd: true,
+        coupleId: true,
+      },
+    });
+
+    const updatedPartner = await tx.user.findUnique({
+      where: { id: partner.id },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        nickName: true,
+        profile: true,
+        role: true,
+        status: true,
+        isConnected: true,
+        subscriptionStart: true,
+        subscriptionEnd: true,
+        coupleId: true,
+      },
+    });
+
+   return {
+     message: 'Connected successfully!',
+     currentUser: updatedCurrentUser,
+     partner: updatedPartner,
+   };
   });
 };
 // ======================== COMMON OTP VERIFY (REGISTER + FORGOT) ========================
@@ -271,7 +312,7 @@ const verifyOtpCommon = async (payload: { email: string; otp: string }) => {
       name: user.fullName,
       email: user.email,
       role: user.role,
-      code: user.invite_code,
+      invite_code: user.invite_code,
       accessToken,
     };
   }
